@@ -17,14 +17,19 @@ pub struct TestReport {
     pub connections: Vec<ConnectionResult>,
 }
 
+/// Configuration parameters captured in the report.
+pub struct ReportConfig<'a> {
+    pub target: &'a str,
+    pub total_connections: u64,
+    pub ramp_up_secs: u64,
+    pub duration_secs: u64,
+    pub message_interval_secs: u64,
+    pub message_size: usize,
+}
+
 /// Build a `TestReport` from CLI configuration and collected results.
 pub fn create_report(
-    target: &str,
-    total_connections: u64,
-    ramp_up_secs: u64,
-    duration_secs: u64,
-    message_interval_secs: u64,
-    message_size: usize,
+    config: ReportConfig<'_>,
     metrics: AggregatedMetrics,
     connections: Vec<ConnectionResult>,
 ) -> TestReport {
@@ -38,12 +43,12 @@ pub fn create_report(
 
     TestReport {
         timestamp,
-        target: target.to_owned(),
-        total_connections,
-        ramp_up_secs,
-        duration_secs,
-        message_interval_secs,
-        message_size,
+        target: config.target.to_owned(),
+        total_connections: config.total_connections,
+        ramp_up_secs: config.ramp_up_secs,
+        duration_secs: config.duration_secs,
+        message_interval_secs: config.message_interval_secs,
+        message_size: config.message_size,
         metrics,
         connections,
     }
@@ -52,7 +57,7 @@ pub fn create_report(
 /// Write `report` as pretty-printed JSON to the file at `path`.
 pub fn write_report(path: &str, report: &TestReport) -> std::io::Result<()> {
     let json = serde_json::to_string_pretty(report)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     std::fs::write(path, json)?;
     eprintln!("Report written to {path}");
     Ok(())

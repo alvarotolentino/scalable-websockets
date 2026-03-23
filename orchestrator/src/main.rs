@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::Path;
 
 use clap::Parser;
 
@@ -49,6 +48,7 @@ struct Args {
 
 /// Partial representation of a single client's test report (for deserialization).
 #[derive(serde::Deserialize)]
+#[allow(dead_code)] // Fields deserialized from JSON; used selectively in merge_reports
 struct ClientReport {
     #[serde(default)]
     timestamp: String,
@@ -179,10 +179,18 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         let msg_size = args.message_size;
 
         handles.push(tokio::spawn(async move {
-            run_client(
-                i, &ip, &target, conns, ramp_up, duration, msg_interval, msg_size, &ssh_key,
-            )
-            .await
+            let params = ClientRunParams {
+                index: i,
+                ip: &ip,
+                target: &target,
+                connections: conns,
+                ramp_up,
+                duration,
+                msg_interval,
+                msg_size,
+                ssh_key: &ssh_key,
+            };
+            run_client(&params).await
         }));
     }
 
@@ -212,32 +220,39 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run_client(
+/// Parameters for a single client run, passed to avoid too many function arguments.
+struct ClientRunParams<'a> {
     index: usize,
-    ip: &str,
-    target: &str,
+    ip: &'a str,
+    target: &'a str,
     connections: u64,
     ramp_up: u64,
     duration: u64,
     msg_interval: u64,
     msg_size: usize,
-    ssh_key: &str,
+    ssh_key: &'a str,
+}
+
+async fn run_client(
+    p: &ClientRunParams<'_>,
 ) -> Result<ClientReport, Box<dyn std::error::Error + Send + Sync>> {
     let remote_result = "/tmp/results.json";
-    let local_result = format!("/tmp/client-{index}-results.json");
+    let local_result = format!("/tmp/client-{}-results.json", p.index);
 
     // Run load test on remote client via SSH
     let run_output = tokio::process::Command::new("ssh")
         .args([
             "-o", "StrictHostKeyChecking=no",
             "-o", "ConnectTimeout=10",
-            "-i", ssh_key,
-            &format!("root@{ip}"),
+            "-i", p.ssh_key,
+            &format!("root@{}", p.ip),
             &format!(
                 "cd /root/scalable-websockets && ./target/release/ws-load-test \
-                 --target {target} --connections {connections} --ramp-up {ramp_up} \
-                 --duration {duration} --message-interval {msg_interval} \
-                 --message-size {msg_size} --output {remote_result}"
+                 --target {} --connections {} --ramp-up {} \
+                 --duration {} --message-interval {} \
+                 --message-size {} --output {remote_result}",
+                p.target, p.connections, p.ramp_up,
+                p.duration, p.msg_interval, p.msg_size,
             ),
         ])
         .output()
@@ -245,15 +260,15 @@ async fn run_client(
 
     if !run_output.status.success() {
         let stderr = String::from_utf8_lossy(&run_output.stderr);
-        return Err(format!("SSH to {ip} failed: {stderr}").into());
+        return Err(format!("SSH to {} failed: {stderr}", p.ip).into());
     }
 
     // SCP result file back
     let scp_output = tokio::process::Command::new("scp")
         .args([
             "-o", "StrictHostKeyChecking=no",
-            "-i", ssh_key,
-            &format!("root@{ip}:{remote_result}"),
+            "-i", p.ssh_key,
+            &format!("root@{}:{remote_result}", p.ip),
             &local_result,
         ])
         .output()
@@ -261,7 +276,7 @@ async fn run_client(
 
     if !scp_output.status.success() {
         let stderr = String::from_utf8_lossy(&scp_output.stderr);
-        return Err(format!("SCP from {ip} failed: {stderr}").into());
+        return Err(format!("SCP from {} failed: {stderr}", p.ip).into());
     }
 
     // Parse JSON report

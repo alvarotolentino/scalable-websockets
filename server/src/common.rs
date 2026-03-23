@@ -1,6 +1,5 @@
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
 
 use socket2::{Domain, Protocol, Socket, Type};
 
@@ -9,7 +8,6 @@ pub struct ServerStats {
     pub active_connections: AtomicU64,
     pub total_messages: AtomicU64,
     pub total_connections: AtomicU64,
-    pub start_time: Instant,
 }
 
 impl ServerStats {
@@ -18,7 +16,6 @@ impl ServerStats {
             active_connections: AtomicU64::new(0),
             total_messages: AtomicU64::new(0),
             total_connections: AtomicU64::new(0),
-            start_time: Instant::now(),
         }
     }
 

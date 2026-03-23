@@ -51,15 +51,12 @@ async fn handle_connection(stream: tokio::net::TcpStream, stats: Arc<ServerStats
             OpCode::Text | OpCode::Binary => {
                 stats.message_received();
                 let payload = frame.payload().to_vec();
-                drop(frame);
                 let mut echo = Frame::new_fin(op_code, payload);
                 if ws.write_frame(&mut echo).await.is_err() {
                     break;
                 }
             }
-            _ => {
-                drop(frame);
-            }
+            _ => {}
         }
         buffer.clear();
     }

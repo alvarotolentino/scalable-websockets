@@ -117,12 +117,14 @@ async fn async_main(args: Args) {
     );
 
     let report = report::create_report(
-        &args.target,
-        total,
-        args.ramp_up,
-        args.duration,
-        args.message_interval,
-        message_size,
+        report::ReportConfig {
+            target: &args.target,
+            total_connections: total,
+            ramp_up_secs: args.ramp_up,
+            duration_secs: args.duration,
+            message_interval_secs: args.message_interval,
+            message_size,
+        },
         m,
         results,
     );
