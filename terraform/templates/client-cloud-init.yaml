@@ -1,0 +1,54 @@
+#cloud-config
+
+write_files:
+  - path: /etc/security/limits.d/99-websocket.conf
+    content: |
+      * soft nofile 1100000
+      * hard nofile 1100000
+    owner: root:root
+    permissions: "0644"
+
+  - path: /etc/sysctl.d/99-websocket.conf
+    content: |
+      # File descriptor limits
+      fs.file-max = 2200000
+      fs.nr_open = 2200000
+
+      # Port range — clients need all of these
+      net.ipv4.ip_local_port_range = 1024 65535
+
+      # Socket reuse for aggressive reconnection
+      net.ipv4.tcp_tw_reuse = 1
+      net.ipv4.tcp_fin_timeout = 10
+
+      # Socket buffers (minimal for high connection count)
+      net.core.rmem_default = 4096
+      net.core.wmem_default = 4096
+      net.core.rmem_max = 16777216
+      net.core.wmem_max = 16777216
+      net.ipv4.tcp_rmem = 4096 4096 16777216
+      net.ipv4.tcp_wmem = 4096 4096 16777216
+
+      # Outbound connection queue
+      net.core.somaxconn = 65535
+      net.core.netdev_max_backlog = 65535
+
+      # Memory and performance
+      net.ipv4.tcp_mem = 786432 1048576 1572864
+      net.core.optmem_max = 25165824
+      net.ipv4.tcp_slow_start_after_idle = 0
+      net.ipv4.tcp_no_metrics_save = 1
+
+      # Orphan and TIME_WAIT limits
+      net.ipv4.tcp_max_orphans = 262144
+      net.ipv4.tcp_max_tw_buckets = 2000000
+      net.ipv4.tcp_syncookies = 1
+    owner: root:root
+    permissions: "0644"
+
+runcmd:
+  - sysctl --system
+  - apt-get update -qq
+  - apt-get install -y -qq build-essential pkg-config libssl-dev ethtool
+  - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+  - echo 'source $HOME/.cargo/env' >> /root/.bashrc
