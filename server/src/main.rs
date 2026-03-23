@@ -1,5 +1,7 @@
 use clap::{Parser, ValueEnum};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 mod common;
 mod tungstenite;
@@ -43,6 +45,7 @@ fn main() {
         .expect("failed to build tokio runtime");
 
     let stats = Arc::new(common::ServerStats::new());
+    let token = CancellationToken::new();
 
     eprintln!(
         "ws-echo-server | crate={:?} bind={}:{} workers={}",
@@ -50,20 +53,34 @@ fn main() {
     );
 
     runtime.block_on(async {
+        let shutdown_token = token.clone();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            eprintln!("\nShutting down...");
+            shutdown_token.cancel();
+        });
+
         let result = match args.crate_impl {
             CrateImpl::Tungstenite => {
-                tungstenite::run(args.bind_addr, args.bind_port, stats).await
+                tungstenite::run(args.bind_addr, args.bind_port, stats.clone(), token).await
             }
             CrateImpl::TokioWs => {
-                tokio_ws::run(args.bind_addr, args.bind_port, stats).await
+                tokio_ws::run(args.bind_addr, args.bind_port, stats.clone(), token).await
             }
             CrateImpl::Wtx => {
-                wtx_impl::run(args.bind_addr, args.bind_port, stats).await
+                wtx_impl::run(args.bind_addr, args.bind_port, stats.clone(), token).await
             }
         };
         if let Err(e) = result {
             eprintln!("server error: {e}");
             std::process::exit(1);
         }
+
+        eprintln!(
+            "ws-echo-server | shutdown complete | total_connections={} total_messages={} active_at_exit={}",
+            stats.total_connections.load(Ordering::Relaxed),
+            stats.total_messages.load(Ordering::Relaxed),
+            stats.active_connections.load(Ordering::Relaxed),
+        );
     });
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_util::sync::CancellationToken;
 
 use crate::common::{create_reuse_port_listener, ServerStats};
 
@@ -10,19 +11,25 @@ pub async fn run(
     bind_addr: String,
     bind_port: u16,
     stats: Arc<ServerStats>,
+    token: CancellationToken,
 ) -> std::io::Result<()> {
     let std_listener = create_reuse_port_listener(&bind_addr, bind_port, 65535)?;
     std_listener.set_nonblocking(true)?;
     let listener = TcpListener::from_std(std_listener)?;
 
     loop {
-        let (stream, _addr) = match listener.accept().await {
-            Ok(conn) => conn,
-            Err(_) => continue,
+        let (stream, _addr) = tokio::select! {
+            result = listener.accept() => match result {
+                Ok(conn) => conn,
+                Err(_) => continue,
+            },
+            () = token.cancelled() => break,
         };
         let stats = stats.clone();
         tokio::spawn(handle_connection(stream, stats));
     }
+
+    Ok(())
 }
 
 async fn handle_connection(stream: tokio::net::TcpStream, stats: Arc<ServerStats>) {
