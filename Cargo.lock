@@ -1154,6 +1154,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ws-load-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "hdrhistogram",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ws-load-test"
 version = "0.1.0"
 dependencies = [

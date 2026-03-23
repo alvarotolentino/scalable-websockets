@@ -1,8 +1,13 @@
 /target/
-results/
+results/*
+!results/.gitkeep
 *.swp
 .env
 
 docs/
 
 .vscode/
+
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/.terraform.lock.hcl

@@ -29,8 +29,33 @@ scalable-websockets/
 │   │   └── report.rs    # JSON report writer
 │   └── tests/
 │       └── integration.rs
-└── Cargo.toml           # workspace manifest
+├── orchestrator/        # ws-load-orchestrator — distributed load testing
+│   └── src/
+│       └── main.rs      # SSH-based multi-client coordination + result merge
+├── terraform/           # Latitude.sh bare-metal provisioning
+│   ├── main.tf          # Provider config
+│   ├── variables.tf     # Input variables
+│   ├── project.tf       # Project & SSH key resources
+│   ├── server.tf        # Server instance
+│   ├── clients.tf       # Client instances (count-based)
+│   ├── outputs.tf       # IP addresses, project ID
+│   └── templates/       # Cloud-init YAML for server & clients
+├── scripts/
+│   ├── run-benchmark.sh      # Full benchmark orchestration (crate × tier × connections)
+│   ├── collect-metrics.sh    # Server-side system metrics sampler (1s CSV)
+│   ├── generate-report.sh    # Post-run Markdown + JSON report generator
+│   └── tuning/               # Kernel tuning tiers (0–9), each with apply + revert
+├── results/             # Benchmark output (gitignored except .gitkeep)
+└── Cargo.toml           # Workspace manifest
 ```
+
+## Prerequisites
+
+- Rust stable toolchain (1.94+)
+- Terraform >= 1.5
+- A [Latitude.sh](https://latitude.sh) account with API token
+- `jq` for report generation
+- SSH key pair for server access
 
 ## Quick Start
 
@@ -92,6 +117,58 @@ Options:
     --duration <DURATION>                 Test duration in seconds [default: 300]
     --output <OUTPUT>                     JSON report path [default: results.json]
 ```
+
+## Orchestrator CLI
+
+```
+ws-load-orchestrator [OPTIONS] --target <TARGET> --total-connections <N> --clients <IPs>
+
+Options:
+    --target <TARGET>                     WebSocket URL
+    --total-connections <N>               Connections distributed across all clients
+    --clients <IPs>                       Comma-separated client IP addresses
+    --ramp-up <RAMP_UP>                   Ramp-up period [default: 120]
+    --duration <DURATION>                 Test duration [default: 300]
+    --message-interval <MESSAGE_INTERVAL> Seconds between echoes [default: 30]
+    --message-size <MESSAGE_SIZE>         Bytes per message [default: 64]
+    --ssh-key <PATH>                      SSH private key [default: ~/.ssh/id_ed25519]
+    --output <OUTPUT>                     Combined report path [default: combined-results.json]
+```
+
+## Full Benchmark Workflow
+
+```bash
+# 1. Provision bare-metal infrastructure
+export LATITUDESH_AUTH_TOKEN="your-token"
+cd terraform
+terraform init
+terraform apply -var="ssh_public_key=$(cat ~/.ssh/id_ed25519.pub)"
+cd ..
+
+# 2. Run benchmarks (all crates × all tiers × connection progression)
+./scripts/run-benchmark.sh --crate all --tier all --duration 300
+
+# 3. Generate comparison report
+./scripts/generate-report.sh results/<timestamp>/
+
+# 4. Tear down infrastructure
+cd terraform && terraform destroy
+```
+
+## Kernel Tuning Tiers
+
+| Tier | Category | Description |
+|------|----------|-------------|
+| 0 | Baseline | Stock Ubuntu 24.04 LTS — no tuning applied |
+| 1 | FD Limits | nofile 1.1M, fs.file-max 2.2M, fs.nr_open 2.2M |
+| 2 | TCP Stack | 22 sysctl params: buffer sizes, backlog, port range, keepalive |
+| 3 | Netfilter | Flush iptables, unload nf_conntrack, blacklist modules |
+| 4 | Affinity | Stop irqbalance, pin IRQs to cores, XPS, interrupt coalescing |
+| 5 | Busy Poll | net.core.busy_poll=1, net.core.busy_read=1 |
+| 6 | Allocator | jemalloc (compile-time — rebuild server binary) |
+| 7 | Audit | Disable syscall auditing via auditctl |
+| 8 | Qdisc | Switch queueing discipline to noqueue/mq |
+| 9 | Miscellaneous | GRO off, TCP Reno, transparent huge pages disabled |
 
 ## Design Principles
 
