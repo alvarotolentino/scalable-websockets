@@ -1,0 +1,6 @@
+/target/
+results/
+*.swp
+.env
+
+docs/
