@@ -1,0 +1,13 @@
+[package]
+name = "ws-echo-server"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+socket2 = { version = "0.5", features = ["all"] }
+tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+tokio-websockets = { version = "0.13", features = ["server", "fastrand", "sha1_smol"] }
+wtx = { version = "0.42", default-features = false, features = ["web-socket-handshake", "tokio"] }
