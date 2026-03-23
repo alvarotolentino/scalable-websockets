@@ -171,34 +171,54 @@ for CRATE in $CRATES; do
         < "$SCRIPT_DIR/collect-metrics.sh" &
       METRICS_SSH_PID=$!
 
-      # Run load test on clients (split connections evenly)
-      PER_CLIENT=$((CONN_LEVEL / NUM_CLIENTS))
-      CLIENT_PIDS=()
-      for CLIENT_IP in "${CLIENT_ARR[@]}"; do
-        remote "$CLIENT_IP" "cd /root/scalable-websockets && \
-          ./target/release/ws-load-test \
+      # Run load test — use orchestrator for high connection counts
+      if [[ "$CONN_LEVEL" -gt 200000 ]]; then
+        echo "  Using orchestrator for $CONN_LEVEL connections..."
+        CLIENTS_CSV=$(echo "${CLIENT_IPS}" | tr '\n' ',' | sed 's/,$//')
+        remote "${CLIENT_ARR[0]}" "cd /root/scalable-websockets && \
+          ./target/release/ws-load-orchestrator \
             --target ws://${SERVER_IP}:9001 \
-            --connections $PER_CLIENT \
-            --ramp-up 60 \
+            --total-connections $CONN_LEVEL \
+            --clients $CLIENTS_CSV \
+            --ramp-up 120 \
             --duration $DURATION \
-            --output /tmp/results.json" &
-        CLIENT_PIDS+=($!)
-      done
+            --output /tmp/combined-results.json"
+        fetch "${CLIENT_ARR[0]}" "/tmp/combined-results.json" \
+          "$RESULT_DIR/client-results.json" 2>/dev/null || true
+      else
+        # Direct SSH to each client for lower connection counts
+        PER_CLIENT=$((CONN_LEVEL / NUM_CLIENTS))
+        CLIENT_PIDS=()
+        for CLIENT_IP in "${CLIENT_ARR[@]}"; do
+          remote "$CLIENT_IP" "cd /root/scalable-websockets && \
+            ./target/release/ws-load-test \
+              --target ws://${SERVER_IP}:9001 \
+              --connections $PER_CLIENT \
+              --ramp-up 60 \
+              --duration $DURATION \
+              --output /tmp/results.json" &
+          CLIENT_PIDS+=($!)
+        done
 
-      # Wait for all clients
-      for pid in "${CLIENT_PIDS[@]}"; do
-        wait "$pid" || true
-      done
+        # Wait for all clients
+        for pid in "${CLIENT_PIDS[@]}"; do
+          wait "$pid" || true
+        done
+
+        # Collect per-client results
+        for i in "${!CLIENT_ARR[@]}"; do
+          fetch "${CLIENT_ARR[$i]}" "/tmp/results.json" \
+            "$RESULT_DIR/client-${i}-results.json" 2>/dev/null || true
+        done
+      fi
 
       # Stop metrics collection
       kill "$METRICS_SSH_PID" 2>/dev/null || true
       wait "$METRICS_SSH_PID" 2>/dev/null || true
 
-      # Collect results
-      for i in "${!CLIENT_ARR[@]}"; do
-        fetch "${CLIENT_ARR[$i]}" "/tmp/results.json" \
-          "$RESULT_DIR/client-${i}-results.json" 2>/dev/null || true
-      done
+      # Collect server metrics
+      fetch "$SERVER_IP" "/tmp/metrics.csv" \
+        "$RESULT_DIR/server-metrics.csv" 2>/dev/null || true
       fetch "$SERVER_IP" "/tmp/metrics.csv" \
         "$RESULT_DIR/server-metrics.csv" 2>/dev/null || true
       fetch "$SERVER_IP" "/tmp/server.log" \
