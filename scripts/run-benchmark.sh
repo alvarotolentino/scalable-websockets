@@ -72,7 +72,8 @@ mkdir -p "$OUTPUT_DIR"
 # Read Terraform outputs
 echo "=== Reading Terraform outputs ==="
 SERVER_IP=$(cd "$PROJECT_DIR/terraform" && terraform output -raw server_public_ip)
-CLIENT_IPS=$(cd "$PROJECT_DIR/terraform" && terraform output -json client_public_ips | jq -r '.[]')
+CLIENT_IPS=$(cd "$PROJECT_DIR/terraform" && terraform output -json client_public_ips \
+  | python -c "import sys,json; print('\n'.join(json.load(sys.stdin)))")
 echo "  Server: $SERVER_IP"
 echo "  Clients: $(echo "$CLIENT_IPS" | tr '\n' ' ')"
 

@@ -1,6 +1,43 @@
 # Scalable WebSockets
 
-Benchmark three Rust WebSocket crates on bare-metal infrastructure, apply progressive kernel and application tuning, and reach **1 million concurrent WebSocket connections** on a single server.
+WIP - Benchmark three Rust WebSocket crates on bare-metal infrastructure, apply progressive kernel and application tuning, and reach **1 million concurrent WebSocket connections** on a single server.
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Bare Metal                                   │
+│                                                                 │
+│  ┌──────────────────────┐       ┌──────────────────────────┐    │
+│  │  SERVER (1 machine)  │       │  CLIENT(s) (N machines)  │    │
+│  │                      │       │                          │    │
+│  │  ┌────────────────┐  │  WS   │  ┌────────────────────┐  │    │
+│  │  │ ws-echo-server │◄─┼───────┼──│  load-test-client  │  │    │
+│  │  │ (one of 3      │  │       │  │  (custom Rust tool │  │    │
+│  │  │  crate impls)  │  │       │  │    + orchestrator) │  │    │
+│  │  └────────────────┘  │       │  │                    │  │    │
+│  │                      │       │  └────────────────────┘  │    │
+│  │  ┌────────────────┐  │       │  ┌────────────────────┐  │    │
+│  │  │ metrics-agent  │──┼───┐   │  │ metrics-agent      │  │    │
+│  │  │ (node_exporter │  │   │   │  │                    │  │    │
+│  │  │  + custom)     │  │   │   │  └────────────────────┘  │    │
+│  │  └────────────────┘  │   │   └──────────────────────────┘    │
+│  └──────────────────────┘   │                                   │
+│                             ▼                                   │
+│                   ┌────────────────┐                            │
+│                   │ Results Store  │                            │
+│                   │ (JSON / CSV)   │                            │
+│                   └────────────────┘                            │
+└─────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+   Developer Machine
+   ┌──────────────┐
+   │  Terraform   │  terraform apply / destroy
+   │  Scripts     │  + cloud-init provisioning
+   │  Report gen  │  post-run analysis & comparison
+   └──────────────┘
+```
 
 ## Crates Under Test
 
@@ -54,7 +91,7 @@ scalable-websockets/
 - Rust stable toolchain (1.94+)
 - Terraform >= 1.5
 - A [Latitude.sh](https://latitude.sh) account with API token
-- `jq` for report generation
+- Python 3 (for report generation JSON parsing)
 - SSH key pair for server access
 
 ## Quick Start
