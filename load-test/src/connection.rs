@@ -25,14 +25,24 @@ pub async fn run_connection(
 ) -> ConnectionResult {
     let hs_start = Instant::now();
 
-    let ws = match tokio_tungstenite::connect_async(target).await {
-        Ok((stream, _response)) => stream,
-        Err(e) => {
+    let connect_timeout = Duration::from_secs(30);
+    let ws = match tokio::time::timeout(connect_timeout, tokio_tungstenite::connect_async(target)).await {
+        Ok(Ok((stream, _response))) => stream,
+        Ok(Err(e)) => {
             return ConnectionResult {
                 id,
                 handshake_time_us: hs_start.elapsed().as_micros() as u64,
                 round_trips: Vec::new(),
                 error: Some(e.to_string()),
+                disconnected_early: false,
+            };
+        }
+        Err(_) => {
+            return ConnectionResult {
+                id,
+                handshake_time_us: hs_start.elapsed().as_micros() as u64,
+                round_trips: Vec::new(),
+                error: Some("connect timeout (30s)".to_string()),
                 disconnected_early: false,
             };
         }
